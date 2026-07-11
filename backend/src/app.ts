@@ -19,7 +19,14 @@ export function createApp(): Express {
 
   app.use(
     cors({
-      origin: env.corsOrigins.length > 0 ? env.corsOrigins : true,
+      // Allow configured origins, any Cloudflare Pages subdomain, and non-browser
+      // clients (curl / the mobile app send no Origin header).
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        if (env.corsOrigins.includes(origin)) return cb(null, true);
+        if (/^https:\/\/([a-z0-9-]+\.)*pages\.dev$/.test(origin)) return cb(null, true);
+        cb(new Error(`Origin ${origin} not allowed by CORS`));
+      },
       credentials: true,
     }),
   );
