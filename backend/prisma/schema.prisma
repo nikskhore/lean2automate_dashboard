@@ -1,0 +1,210 @@
+// Finance Tracker — Prisma schema (Phase 1)
+// Money is stored as Decimal(14,2) — never floats. RecurringRule, Budget, and asset/liability
+// (Balance Sheet) modelling are intentionally deferred to Phase 2/3.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  bank
+  cash
+  credit_card
+}
+
+enum FlowType {
+  income
+  expense
+}
+
+enum FileType {
+  image
+  pdf
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+}
+
+enum RecurringFrequency {
+  weekly
+  monthly
+  yearly
+}
+
+model User {
+  id              String        @id @default(uuid())
+  name            String
+  email           String        @unique
+  passwordHash    String        @map("password_hash")
+  currencyDefault String        @default("INR") @map("currency_default")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  accounts       Account[]
+  categories     Category[]
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+  budgets        Budget[]
+
+  @@map("users")
+}
+
+model Account {
+  id             String      @id @default(uuid())
+  userId         String      @map("user_id")
+  name           String
+  type           AccountType
+  openingBalance Decimal     @default(0) @db.Decimal(14, 2) @map("opening_balance")
+  currency       String      @default("INR")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Category {
+  id               String     @id @default(uuid())
+  userId           String     @map("user_id")
+  name             String
+  type             FlowType
+  parentCategoryId String?    @map("parent_category_id")
+  isDefault        Boolean    @default(false) @map("is_default")
+  createdAt        DateTime   @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent         Category?       @relation("CategoryToSubcategory", fields: [parentCategoryId], references: [id], onDelete: Cascade)
+  children       Category[]      @relation("CategoryToSubcategory")
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+  budgets        Budget[]
+
+  @@unique([userId, type, name, parentCategoryId])
+  @@index([userId])
+  @@map("categories")
+}
+
+model Transaction {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  accountId     String    @map("account_id")
+  categoryId    String    @map("category_id")
+  type          FlowType
+  amount        Decimal   @db.Decimal(14, 2)
+  currency      String    @default("INR")
+  date          DateTime  @db.Date
+  description   String?   @db.Text
+  vendorName    String?   @db.VarChar(200) @map("vendor_name")
+  vendorGstin   String?   @map("vendor_gstin")
+  taxAmount     Decimal   @default(0) @db.Decimal(14, 2) @map("tax_amount")
+  paymentMethod   String?  @map("payment_method")
+  isRecurring     Boolean  @default(false) @map("is_recurring")
+  recurringRuleId String?  @map("recurring_rule_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  recurringRule RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  attachments   Attachment[]
+  auditLogs     AuditLog[]
+
+  @@index([userId, date])
+  @@index([userId, categoryId])
+  @@index([userId, accountId])
+  @@map("transactions")
+}
+
+model Attachment {
+  id            String   @id @default(uuid())
+  transactionId String   @map("transaction_id")
+  storageKey    String   @db.VarChar(255) @map("storage_key")
+  fileName      String   @db.VarChar(255) @map("file_name")
+  fileType      FileType @map("file_type")
+  fileSize      Int      @map("file_size")
+  uploadedAt    DateTime @default(now()) @map("uploaded_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@map("attachments")
+}
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  transactionId String?     @map("transaction_id")
+  changedBy     String      @map("changed_by")
+  action        AuditAction
+  fieldChanged  String?     @map("field_changed")
+  oldValue      String?     @db.Text @map("old_value")
+  newValue      String?     @db.Text @map("new_value")
+  changedAt     DateTime    @default(now()) @map("changed_at")
+
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
+  @@index([changedBy])
+  @@map("audit_logs")
+}
+
+// Phase 2: a template + schedule that materializes into Transactions.
+model RecurringRule {
+  id            String             @id @default(uuid())
+  userId        String             @map("user_id")
+  type          FlowType
+  amount        Decimal            @db.Decimal(14, 2)
+  currency      String             @default("INR")
+  accountId     String             @map("account_id")
+  categoryId    String             @map("category_id")
+  vendorName    String?            @db.VarChar(200) @map("vendor_name")
+  description   String?            @db.Text
+  taxAmount     Decimal            @default(0) @db.Decimal(14, 2) @map("tax_amount")
+  paymentMethod String?            @map("payment_method")
+  frequency     RecurringFrequency
+  dayOfMonth    Int?               @map("day_of_month")
+  nextRunDate   DateTime           @db.Date @map("next_run_date")
+  isActive      Boolean            @default(true) @map("is_active")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+
+  @@index([userId])
+  @@index([isActive, nextRunDate])
+  @@map("recurring_rules")
+}
+
+// Phase 2: a monthly budget cap per category.
+model Budget {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  categoryId  String   @map("category_id")
+  periodMonth DateTime @db.Date @map("period_month") // first day of the month
+  amount      Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId, periodMonth])
+  @@index([userId, periodMonth])
+  @@map("budgets")
+}

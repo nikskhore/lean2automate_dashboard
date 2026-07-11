@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Env / secrets
+.env
+.env.local
+*.local
+
+# Build output
+dist/
+build/
+web/dist/
+
+# Uploaded files (local disk storage — never commit user data)
+backend/uploads/
+
+# Generated Excel exports
+*.xlsx
+!**/templates/*.xlsx
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code local state (per-user)
+.claude/settings.local.json
+
+# Test / coverage
+coverage/

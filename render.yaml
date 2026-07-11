@@ -1,0 +1,43 @@
+# Render blueprint for the Finance Tracker API (Node/Express).
+# In Render: New + -> Blueprint -> connect this repo. Secrets (sync: false) are set in the dashboard.
+services:
+  - type: web
+    name: finance-tracker-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL # Supabase Session-pooler URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CORS_ORIGIN # https://app.<your-domain>  (the deployed web origin)
+        sync: false
+      - key: DEFAULT_CURRENCY
+        value: INR
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+      # Free plan spins down when idle, so the in-process cron is unreliable;
+      # the Cloudflare Cron Trigger hitting /api/internal/run-recurring is the source of truth.
+      - key: ENABLE_CRON
+        value: "false"
